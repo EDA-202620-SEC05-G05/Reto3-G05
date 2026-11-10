@@ -216,27 +216,210 @@ def req_3(catalog):
     pass
 
 
-def req_4(catalog):
+# ---------------------------------------------------------------------------
+# Req 4 
+# ---------------------------------------------------------------------------
+ 
+def req_4(catalog, date_lo, date_hi, income_level, n):
     """
-    Retorna el resultado del requerimiento 4
+    Top N marcas con más órdenes en [date_lo, date_hi] para un nivel de
+    ingresos. Orden: órdenes desc, luego marca asc.
+    Por marca: count, avg_price, avg_revenue y la orden de mayor ingreso
+    (ante empate, la más reciente).
     """
-    # TODO: Modificar el requerimiento 4
-    pass
-
-
-def req_5(catalog):
+    start = get_time()
+    stats = mp.new_map(7, 4.0)
+    tree = mp.get(catalog['by_income'], income_level)
+ 
+    if tree is not None:
+        buckets = rbt.values(tree, date_lo, date_hi)
+        for i in range(al.size(buckets)):
+            bucket = al.get_element(buckets, i)
+            for j in range(al.size(bucket)):
+                rec = al.get_element(bucket, j)
+                st = mp.get(stats, rec['brand'])
+                if st is None:
+                    st = {'brand': rec['brand'], 'count': 0, 'sum_price': 0.0,
+                          'sum_rev': 0.0, 'best': rec}
+                    mp.put(stats, rec['brand'], st)
+                st['count'] += 1
+                st['sum_price'] += rec['final_price_usd']
+                st['sum_rev'] += rec['revenue_usd']
+                best = st['best']
+                if (rec['revenue_usd'] > best['revenue_usd'] or
+                        (rec['revenue_usd'] == best['revenue_usd'] and
+                         rec['order_date'] > best['order_date'])):
+                    st['best'] = rec
+ 
+    heap = pq.new_heap(True)
+    values = mp.value_set(stats)
+    for i in range(al.size(values)):
+        st = al.get_element(values, i)
+        # min-heap: (-órdenes, marca) => más órdenes primero, luego alfabético
+        pq.insert(heap, (-st['count'], st['brand']), st)
+ 
+    result = al.new_list()
+    while al.size(result) < n and not pq.is_empty(heap):
+        st = pq.remove(heap)
+        al.add_last(result, {
+            'brand': st['brand'],
+            'count': st['count'],
+            'avg_price': st['sum_price'] / st['count'],
+            'avg_revenue': st['sum_rev'] / st['count'],
+            'best': st['best'],
+        })
+ 
+    end = get_time()
+    return {
+        'time_ms': delta_time(start, end),
+        'n': al.size(result),
+        'brands': result,
+    }
+ 
+ 
+# ---------------------------------------------------------------------------
+# Req 5 
+# ---------------------------------------------------------------------------
+ 
+def req_5(catalog, country, date_lo, date_hi, n):
     """
-    Retorna el resultado del requerimiento 5
+    Top N marcas con mejor calificación promedio en un país y rango de fechas.
+    Orden: calificación desc, luego marca asc.
+    Por marca: count, avg_rating, avg_revenue y la orden con más unidades
+    (ante empate, la de mayor order_id).
     """
-    # TODO: Modificar el requerimiento 5
-    pass
-
-def req_6(catalog):
+    start = get_time()
+    stats = mp.new_map(7, 4.0)
+    tree = mp.get(catalog['by_country'], country)
+ 
+    if tree is not None:
+        buckets = rbt.values(tree, date_lo, date_hi)
+        for i in range(al.size(buckets)):
+            bucket = al.get_element(buckets, i)
+            for j in range(al.size(bucket)):
+                rec = al.get_element(bucket, j)
+                st = mp.get(stats, rec['brand'])
+                if st is None:
+                    st = {'brand': rec['brand'], 'count': 0, 'sum_rating': 0.0,
+                          'sum_rev': 0.0, 'best': rec}
+                    mp.put(stats, rec['brand'], st)
+                st['count'] += 1
+                st['sum_rating'] += rec['customer_rating']
+                st['sum_rev'] += rec['revenue_usd']
+                best = st['best']
+                if (rec['units_sold'] > best['units_sold'] or
+                        (rec['units_sold'] == best['units_sold'] and
+                         rec['order_id'] > best['order_id'])):
+                    st['best'] = rec
+ 
+    heap = pq.new_heap(True)
+    values = mp.value_set(stats)
+    for i in range(al.size(values)):
+        st = al.get_element(values, i)
+        avg_rating = st['sum_rating'] / st['count']
+        st['avg_rating'] = avg_rating
+        # min-heap: (-promedio, marca) => mejor calificada primero, luego alfabético
+        pq.insert(heap, (-avg_rating, st['brand']), st)
+ 
+    result = al.new_list()
+    while al.size(result) < n and not pq.is_empty(heap):
+        st = pq.remove(heap)
+        al.add_last(result, {
+            'brand': st['brand'],
+            'count': st['count'],
+            'avg_rating': st['avg_rating'],
+            'avg_revenue': st['sum_rev'] / st['count'],
+            'best': st['best'],
+        })
+ 
+    end = get_time()
+    return {
+        'time_ms': delta_time(start, end),
+        'n': al.size(result),
+        'brands': result,
+    }
+ 
+ 
+# ---------------------------------------------------------------------------
+# Req 6 
+# ---------------------------------------------------------------------------
+ 
+def req_6(catalog, date_lo, date_hi, price_lo, price_hi, n):
     """
-    Retorna el resultado del requerimiento 6
+    Top N marcas más consistentes en descuentos (menor desviación estándar
+    poblacional de discount_percent) en un rango de fechas y de precio base.
+    Orden: desviación asc, luego promedio de descuento asc.
+    Por marca: count, avg_discount, std y la orden cuyo descuento es más
+    cercano al promedio (ante empate, el menor order_id).
     """
-    # TODO: Modificar el requerimiento 6
-    pass
+    start = get_time()
+ 
+    # Filtro por fechas (RBT) y por precio base
+    filtered = al.new_list()
+    buckets = rbt.values(catalog['by_date'], date_lo, date_hi)
+    for i in range(al.size(buckets)):
+        bucket = al.get_element(buckets, i)
+        for j in range(al.size(bucket)):
+            rec = al.get_element(bucket, j)
+            if price_lo <= rec['base_price_usd'] <= price_hi:
+                al.add_last(filtered, rec)
+ 
+    # Pasada 1: cantidad y promedio de descuento por marca
+    stats = mp.new_map(7, 4.0)
+    for i in range(al.size(filtered)):
+        rec = al.get_element(filtered, i)
+        st = mp.get(stats, rec['brand'])
+        if st is None:
+            st = {'brand': rec['brand'], 'count': 0, 'sum_disc': 0.0}
+            mp.put(stats, rec['brand'], st)
+        st['count'] += 1
+        st['sum_disc'] += rec['discount_percent']
+ 
+    values = mp.value_set(stats)
+    for i in range(al.size(values)):
+        st = al.get_element(values, i)
+        st['mean'] = st['sum_disc'] / st['count']
+        st['sq_dev'] = 0.0
+        st['closest'] = None
+        st['closest_diff'] = None
+ 
+    # Pasada 2: suma de desvíos al cuadrado y orden más cercana al promedio
+    for i in range(al.size(filtered)):
+        rec = al.get_element(filtered, i)
+        st = mp.get(stats, rec['brand'])
+        dev = rec['discount_percent'] - st['mean']
+        st['sq_dev'] += dev * dev
+        diff = abs(dev)
+        if (st['closest'] is None or diff < st['closest_diff'] or
+                (diff == st['closest_diff'] and
+                 rec['order_id'] < st['closest']['order_id'])):
+            st['closest'] = rec
+            st['closest_diff'] = diff
+ 
+    heap = pq.new_heap(True)
+    for i in range(al.size(values)):
+        st = al.get_element(values, i)
+        st['std'] = math.sqrt(st['sq_dev'] / st['count'])
+        pq.insert(heap, (st['std'], st['mean'], st['brand']), st)
+ 
+    result = al.new_list()
+    while al.size(result) < n and not pq.is_empty(heap):
+        st = pq.remove(heap)
+        al.add_last(result, {
+            'brand': st['brand'],
+            'count': st['count'],
+            'avg_discount': st['mean'],
+            'std': st['std'],
+            'closest': st['closest'],
+        })
+ 
+    end = get_time()
+    return {
+        'time_ms': delta_time(start, end),
+        'total_brands': mp.size(stats),
+        'n': al.size(result),
+        'brands': result,
+    }
 
 
 # Funciones para medir tiempos de ejecucion
