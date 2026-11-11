@@ -91,6 +91,7 @@ def get_or_create_tree(table, key):
  
 def index_record(catalog, rec):
     """Inserta un registro en todos los índices del catálogo."""
+    mp.put(catalog['by_id'], rec['order_id'], rec)
     index_by_date(catalog['by_date'], rec)
     index_by_date(get_or_create_tree(catalog['by_income'], rec['customer_income_level']), rec)
     index_by_date(get_or_create_tree(catalog['by_country'], rec['country']), rec)
@@ -107,6 +108,8 @@ def new_logic():
     """Crea el catálogo con todas las estructuras e índices."""
     return {
         'sales': al.new_list(),
+        # map: order_id -> venta (para print_data)
+        'by_id': mp.new_map(1000, 4.0),
         # RBT: fecha -> array_list de ventas
         'by_date': rbt.new_map(),
         # map: marca -> RBT con llave (descuento, fecha, order_id)
@@ -165,9 +168,15 @@ def load_data(catalog, filename):
         'first5': first5,
         'last5': last5,
     }
-
-
-# Req 1 
+ 
+ 
+def get_sale(catalog, order_id):
+    """Retorna la venta con ese order_id, o None si no existe."""
+    return mp.get(catalog['by_id'], parse_id(str(order_id)))
+ 
+ 
+# ---------------------------------------------------------------------------
+# Req 1 (individual)
 # ---------------------------------------------------------------------------
  
 def req_1(catalog, brand, discount_lo, discount_hi):
@@ -198,7 +207,7 @@ def req_1(catalog, brand, discount_lo, discount_hi):
         'total_cost': total_cost,
         'rows': rows,
     }
-
+ 
 
 def req_2(catalog):
     """
@@ -217,7 +226,7 @@ def req_3(catalog):
 
 
 # ---------------------------------------------------------------------------
-# Req 4 
+# Req 4 (grupal)
 # ---------------------------------------------------------------------------
  
 def req_4(catalog, date_lo, date_hi, income_level, n):
@@ -272,13 +281,14 @@ def req_4(catalog, date_lo, date_hi, income_level, n):
     end = get_time()
     return {
         'time_ms': delta_time(start, end),
+        'total_brands': mp.size(stats),
         'n': al.size(result),
         'brands': result,
     }
  
  
 # ---------------------------------------------------------------------------
-# Req 5 
+# Req 5 (grupal)
 # ---------------------------------------------------------------------------
  
 def req_5(catalog, country, date_lo, date_hi, n):
@@ -335,13 +345,14 @@ def req_5(catalog, country, date_lo, date_hi, n):
     end = get_time()
     return {
         'time_ms': delta_time(start, end),
+        'total_brands': mp.size(stats),
         'n': al.size(result),
         'brands': result,
     }
  
  
 # ---------------------------------------------------------------------------
-# Req 6 
+# Req 6 (grupal)
 # ---------------------------------------------------------------------------
  
 def req_6(catalog, date_lo, date_hi, price_lo, price_hi, n):
@@ -420,8 +431,7 @@ def req_6(catalog, date_lo, date_hi, price_lo, price_hi, n):
         'n': al.size(result),
         'brands': result,
     }
-
-
+ 
 # Funciones para medir tiempos de ejecucion
 
 def get_time():
