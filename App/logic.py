@@ -209,12 +209,39 @@ def req_1(catalog, brand, discount_lo, discount_hi):
     }
  
 
-def req_2(catalog):
+def req_2(catalog, country, rating_lo, rating_hi):
     """
-    Retorna el resultado del requerimiento 2
+    Órdenes de venta realizadas en un país con calificación del cliente
+    dentro del rango [rating_lo, rating_hi].
+    Orden: calificación desc, luego fecha inversa (cronológica inversa:
+    de la más reciente a la más antigua).
+    Retorna: time_ms, total, total_cost, rows (array_list; solo 5+5 si hay más de 10).
     """
-    # TODO: Modificar el requerimiento 2
-    pass
+    start = get_time()
+    tree = mp.get(catalog['by_country_rating'], country)
+    found = al.new_list()
+
+    if tree is not None:
+        low_key = (rating_lo, "", 0)
+        high_key = (rating_hi, "\U0010ffff", 0)
+        elements = rbt.values(tree, low_key, high_key)
+        
+        n = al.size(elements)
+        for i in range(n - 1, -1, -1):
+            al.add_last(found, al.get_element(elements, i))
+
+    total_cost = 0.0
+    for i in range(al.size(found)):
+        total_cost += al.get_element(found, i)['final_price_usd']
+
+    rows = first_and_last(found)
+    end = get_time()
+    return {
+        'time_ms': delta_time(start, end),
+        'total': al.size(found),
+        'total_cost': total_cost,
+        'rows': rows,
+    }
 
 
 def req_3(catalog):
