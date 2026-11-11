@@ -16,7 +16,7 @@ sys.setrecursionlimit(default_limit * 10)
  
 # Carpeta y prefijo de los archivos de datos (cambiar si la ruta es otra)
 DATA_DIR = "Data/Data/"
-FILE_PREFIX = "global_sports_footwear_sales-small"
+FILE_PREFIX = "global_sports_footwear_sales-"
  
  
 def new_logic():
