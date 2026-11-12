@@ -246,8 +246,35 @@ def print_req_2(control):
     """
         Función que imprime la solución del Requerimiento 2 en consola
     """
-    # TODO: Imprimir el resultado del requerimiento 2
-    pass
+    if not is_loaded(control):
+        return
+    country = ask_text("País a analizar (ej: USA): ")
+    rating_lo = ask_float("Calificación mínima (ej: 3.5): ")
+    rating_hi = ask_float("Calificación máxima (ej: 5.0): ")
+
+    result = lg.req_2(control, country, rating_lo, rating_hi)
+
+    print("\nTiempo de ejecución: " + str(result['time_ms']) + " ms")
+    print("Total de órdenes: " + str(result['total']))
+    print("Costo total final: " + str(round(result['total_cost'], 2)) + " USD")
+
+    if result['total'] == 0:
+        print("No hay órdenes que cumplan el filtro.\n")
+        return
+    if result['total'] > 10:
+        print("Se muestran las 5 primeras y las 5 últimas órdenes.")
+
+    headers = ["order_id", "Fecha", "Marca", "Modelo", "País",
+               "Canal", "Calificación", "Precio final (USD)", "Ingreso (USD)"]
+    rows = al.new_list()
+    for i in range(al.size(result['rows'])):
+        r = al.get_element(result['rows'], i)
+        al.add_last(rows, [r['order_id'], r['order_date'], r['brand'],
+                           r['model_name'], r['country'], r['sales_channel'],
+                           r['customer_rating'], r['final_price_usd'],
+                           r['revenue_usd']])
+    show_table(headers, rows)
+    print()
  
  
 def print_req_3(control):
