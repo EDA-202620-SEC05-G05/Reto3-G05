@@ -95,6 +95,8 @@ def index_record(catalog, rec):
     index_by_date(catalog['by_date'], rec)
     index_by_date(get_or_create_tree(catalog['by_income'], rec['customer_income_level']), rec)
     index_by_date(get_or_create_tree(catalog['by_country'], rec['country']), rec)
+    tree = get_or_create_tree(catalog['by_country_rating'], rec['country'])
+    rbt.put(tree, (rec['customer_rating'], rec['order_date'], rec['order_id']), rec)
     tree = get_or_create_tree(catalog['by_brand_discount'], rec['brand'])
     key = (rec['discount_percent'], rec['order_date'], rec['order_id'])
     rbt.put(tree, key, rec)
@@ -114,6 +116,8 @@ def new_logic():
         'by_date': rbt.new_map(),
         # map: marca -> RBT con llave (descuento, fecha, order_id)
         'by_brand_discount': mp.new_map(7, 4.0),
+        # map: país -> RBT con llave (calificación, fecha, order_id)
+        'by_country_rating': mp.new_map(31, 4.0),
         # map: nivel de ingresos -> RBT (fecha -> array_list de ventas)
         'by_income': mp.new_map(3, 4.0),
         # map: país -> RBT (fecha -> array_list de ventas)
@@ -211,34 +215,38 @@ def req_1(catalog, brand, discount_lo, discount_hi):
 
 def req_2(catalog, country, rating_lo, rating_hi):
     """
-    Órdenes de venta realizadas en un país con calificación del cliente
-    dentro del rango [rating_lo, rating_hi].
-    Orden: calificación desc, luego fecha inversa (cronológica inversa:
-    de la más reciente a la más antigua).
+    Órdenes de un país con calificación del cliente en [rating_lo, rating_hi].
+    Orden: calificación desc, luego fecha desc (más reciente primero).
+    Se consulta el RBT por rango (ascendente) y se lee desde el final.
     Retorna: time_ms, total, total_cost, rows (array_list; solo 5+5 si hay más de 10).
     """
     start = get_time()
     tree = mp.get(catalog['by_country_rating'], country)
     found = al.new_list()
-
     if tree is not None:
         low_key = (rating_lo, "", 0)
         high_key = (rating_hi, "\U0010ffff", 0)
-        elements = rbt.values(tree, low_key, high_key)
-        
-        n = al.size(elements)
-        for i in range(n - 1, -1, -1):
-            al.add_last(found, al.get_element(elements, i))
+        found = rbt.values(tree, low_key, high_key)
 
+    total = al.size(found)
     total_cost = 0.0
-    for i in range(al.size(found)):
+    for i in range(total):
         total_cost += al.get_element(found, i)['final_price_usd']
 
-    rows = first_and_last(found)
+    rows = al.new_list()
+    if total <= 10:
+        for i in range(total - 1, -1, -1):
+            al.add_last(rows, al.get_element(found, i))
+    else:
+        for i in range(total - 1, total - 6, -1):   # los 5 primeros (descendente)
+            al.add_last(rows, al.get_element(found, i))
+        for i in range(4, -1, -1):                  # los 5 últimos
+            al.add_last(rows, al.get_element(found, i))
+
     end = get_time()
     return {
         'time_ms': delta_time(start, end),
-        'total': al.size(found),
+        'total': total,
         'total_cost': total_cost,
         'rows': rows,
     }
